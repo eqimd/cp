@@ -8,7 +8,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 include_directories("src/", "src/FileStat/", "src/util/")
 
 add_executable(
-        ldd-repl
+        cp
         main.cpp
         src/FileStat/FileStat.cpp
         src/FileStat/FileStat.h
