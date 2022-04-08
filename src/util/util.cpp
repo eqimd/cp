@@ -11,7 +11,6 @@
 #include "FileStat.h"
 #include "util.h"
 
-
 void copyDirectly(const char* src, const char* dst) {
     FileStat fdSrc(src, O_RDONLY);
     FileStat fdDst(dst, O_WRONLY | O_CREAT | O_TRUNC);
@@ -83,8 +82,16 @@ void copyDirectly(const char* src, const char* dst) {
 void copySymlink(const char* src, const char* dst) {
     char* actualpath = realpath(src, NULL);
     errno = 0;
-    int ret_code = symlink(actualpath, dst);
-    if (ret_code != 0) {
+    int retCode = symlink(actualpath, dst);
+    if (retCode != 0) {
+        throw std::runtime_error(strerror(errno));
+    }
+}
+
+void copyHardlink(const char* src, const char* dst) {
+    errno = 0;
+    int retCode = linkat(0, src, 0, dst, 0);
+    if (retCode != 0) {
         throw std::runtime_error(strerror(errno));
     }
 }
@@ -94,18 +101,51 @@ void copyMain(const char* src, const char* dst) {
         copySymlink(src, dst);
         std::cout << "Source is a symlink; created symlink." << std::endl;
     } else {
-        errno = 0;
-        int ret_code = linkat(0, src, 0, dst, 0);
-        if (ret_code != 0) {
-            switch (errno) {
-                case EXDEV:
-                    std::cout << "Source and destination are in different file systems; copying full file..." << std::endl;
-                    copyDirectly(src, dst);
-            }
-        } else {
+        try {
+            copyHardlink(src, dst);
             std::cout << "Source is not a symlink, but is a hardlink; created hardlink." << std::endl;
+        } catch (const std::runtime_error& e) {
+            if (errno == EXDEV) {
+                std::cout << "Source and destination are in different file systems; copying full file..." << std::endl;
+                copyDirectly(src, dst);
+            } else {
+                throw;
+            }
         }
     }
+}
+
+fs::path createNewDirectories(const fs::path& path) {
+    std::vector<std::string> paths;
+    boost::split(paths, path.string(), boost::is_any_of("/"));
+    paths.pop_back();
+
+    auto pathIter = paths.end();
+    fs::path curPath = path.parent_path();
+
+    while (pathIter != paths.begin() && !fs::exists(curPath)) {
+        --pathIter;
+        curPath /= "..";
+        curPath = curPath.lexically_normal();
+    }
+
+    fs::path existingPath = curPath;
+    fs::path nonExistingPathBegin;
+    if (pathIter != paths.end()) {
+        nonExistingPathBegin = *pathIter;
+    }
+    for (pathIter; pathIter != paths.end(); ++pathIter) {
+        curPath /= *pathIter;
+        try {
+            fs::create_directory(curPath);
+            std::cout << "Created directory: " << curPath << std::endl;
+        } catch (const fs::filesystem_error& e) {
+            fs::remove_all(existingPath / nonExistingPathBegin);
+            throw;
+        }
+    }
+
+    return existingPath / nonExistingPathBegin;
 }
 
 void copySrcToDst(const fs::path& src, const fs::path& dst) {
@@ -120,59 +160,38 @@ void copySrcToDst(const fs::path& src, const fs::path& dst) {
     }
 
     fs::path fullPath = dst;
-    fs::path tempPath;
-    fs::path existingPath;
-    fs::path nonExistingPathBegin;
+    fs::path backupPath;
+    fs::path nonExPath;
 
     if (fs::exists(dst)) {
         if (fs::is_directory(dst)) {
             fullPath /= src.filename();
-            tempPath = fullPath;
         } else {
-            tempPath = fullPath.string() + ".tmp";
+            backupPath = fullPath.parent_path() / ("." + fullPath.filename().string() + ".bk");
+            copyHardlink(fs::absolute(fullPath).c_str(), fs::absolute(backupPath).c_str());
         }
     } else {
-        std::vector<std::string> paths;
-        boost::split(paths, dst.string(), boost::is_any_of("/"));
-
         if (dst.filename().empty()) {
             fullPath /= src.filename();
-        } else {
-            paths.pop_back();
         }
-
-        for (auto& p : paths) {
-            try {
-                if (!fs::create_directory(p)) {
-                    existingPath /= p;
-
-                } else {
-                    if (nonExistingPathBegin.empty()) {
-                        nonExistingPathBegin = p;
-                    }
-                    std::cout << "Created directory: " << existingPath / p << std::endl;
-                }
-            } catch (const fs::filesystem_error& e) {
-                if (!nonExistingPathBegin.empty()) {
-                    fs::remove_all(existingPath / nonExistingPathBegin);
-                }
-                throw;
-            }
-        }
-        tempPath = fullPath;
+        nonExPath = createNewDirectories(fullPath);     
     }
 
+    fs::remove(fullPath);
+
     try {
-        copyMain(fs::absolute(src).string().c_str(), fs::absolute(tempPath).string().c_str());
+        copyMain(fs::absolute(src).c_str(), fs::absolute(fullPath).c_str());
+        fs::remove(backupPath);
     } catch (const std::runtime_error& e) {
-        if (!nonExistingPathBegin.empty()) {
-            fs::remove_all(existingPath / nonExistingPathBegin);
+        if (!nonExPath.empty()) {
+            fs::remove_all(nonExPath);
         } else {
-            if (tempPath.filename() != fullPath.filename()) {
-                fs::remove(tempPath);
+            fs::remove(fullPath);
+            if (!backupPath.empty()) {
+                copyHardlink(fs::absolute(backupPath).c_str(), fs::absolute(fullPath).c_str());
+                fs::remove(backupPath);
             }
         }
         throw;
     }
-
 }
