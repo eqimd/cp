@@ -6,8 +6,7 @@
 #include <string.h>
 #include <sys/file.h>
 #include <filesystem>
-#include <boost/algorithm/string/split.hpp>
-#include <boost/algorithm/string/classification.hpp>
+#include <vector>
 #include "FileStat.h"
 #include "util.h"
 #include <csignal>
