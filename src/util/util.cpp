@@ -83,16 +83,6 @@ private:
 
     bool inCopyProcess = false;
 
-
-    void copySymlink(const char* src, const char* dst) {
-        char* actualpath = realpath(src, NULL);
-        errno = 0;
-        int retCode = symlink(actualpath, dst);
-        if (retCode != 0) {
-            throw std::runtime_error(strerror(errno));
-        }
-    }
-
     void copyDirectly(const char* src, const char* dst) {
         FileStat fdSrc(src, O_RDONLY);
         FileStat fdDst(dst, O_WRONLY | O_CREAT | O_TRUNC);
