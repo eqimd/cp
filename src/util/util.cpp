@@ -31,34 +31,30 @@ public:
     }
 
     ~CopyContext() {
-        try {
-            if (inCopyProcess) {
-                if (!_nonExPath.empty()) {
-                    fs::remove_all(_nonExPath);
-                } else {
-                    fs::remove(_fullPath);
-                    if (!_backupPath.empty()) {
-                        errno = 0;
-                        int retCode = linkat(
-                            0, fs::absolute(_backupPath).c_str(),
-                            0, fs::absolute(_fullPath).c_str(),
-                            0
-                        );
-                        if (retCode != 0) {
-                            std::cerr << "Could not restore from backup;"
-                                      << "check backup at "
-                                      << _backupPath
-                                      << std::endl
-                                      << strerror(errno)
-                                      << std::endl;
-                        } else {
-                            fs::remove(_backupPath);
-                        }
+        if (inCopyProcess) {
+            if (!_nonExPath.empty()) {
+                fs::remove_all(_nonExPath);
+            } else {
+                fs::remove(_fullPath);
+                if (!_backupPath.empty()) {
+                    errno = 0;
+                    int retCode = linkat(
+                        0, fs::absolute(_backupPath).c_str(),
+                        0, fs::absolute(_fullPath).c_str(),
+                        0
+                    );
+                    if (retCode != 0) {
+                        std::cerr << "Could not restore from backup; "
+                                    << "check backup at "
+                                    << _backupPath
+                                    << std::endl
+                                    << strerror(errno)
+                                    << std::endl;
+                    } else {
+                        fs::remove(_backupPath);
                     }
                 }
             }
-        } catch (const std::runtime_error& e) {
-            std::cerr << e.what() << std::endl;
         }
     }
 
@@ -203,41 +199,50 @@ private:
         if (pathIter != paths.end()) {
             nonExistingPathBegin = *pathIter;
         }
+        
+        _nonExPath = existingPath / nonExistingPathBegin;
+
         for (pathIter; pathIter != paths.end(); ++pathIter) {
             curPath /= *pathIter;
             try {
                 fs::create_directory(curPath);
                 std::cout << "Created directory: " << curPath << std::endl;
-            } catch (const fs::filesystem_error& e) {
-                fs::remove_all(existingPath / nonExistingPathBegin);
+            } catch (...) {
+                std::cerr << "Error while creating directory " << curPath << std::endl;
                 throw;
             }
         }
 
-        _nonExPath = existingPath / nonExistingPathBegin;
+    }
+
+    void createBackup(const fs::path& backupPath) {
+        _backupPath = backupPath;
+        errno = 0;
+        int retCode = linkat(
+            0, fs::absolute(_fullPath).c_str(),
+            0, fs::absolute(_backupPath).c_str(),
+            0
+        );
+        if (retCode != 0) {
+            std::cerr << "Could not create backup." << std::endl;
+            fs::remove(_backupPath);
+            throw std::runtime_error(strerror(errno));
+        }
     }
 
     void preparePathsAndBackup() {
-        _fullPath = _dst;
+        _fullPath = fs::absolute(_dst);
 
-        if (fs::exists(_dst)) {
-            if (fs::is_directory(_dst)) {
+        if (fs::exists(_fullPath)) {
+            if (fs::is_directory(_fullPath)) {
                 _fullPath /= _src.filename();
             } else {
-                _backupPath = _fullPath.parent_path() / ("." + _fullPath.filename().string() + ".bk");
-                errno = 0;
-                int retCode = linkat(
-                    0, fs::absolute(_fullPath).c_str(),
-                    0, fs::absolute(_backupPath).c_str(),
-                    0
+                createBackup(
+                    _fullPath.parent_path() / ("." + _fullPath.filename().string() + ".bk")
                 );
-                if (retCode != 0) {
-                    std::cerr << "Could not create backup." << std::endl;
-                    throw std::runtime_error(strerror(errno));
-                }
             }
         } else {
-            if (_dst.filename().empty()) {
+            if (_fullPath.filename().empty()) {
                 _fullPath /= _src.filename();
             }
             createNewDirectories();
