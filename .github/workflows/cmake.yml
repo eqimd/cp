@@ -36,5 +36,5 @@ jobs:
 
     - name: Run tests
       working-directory: ${{github.workspace}}
-      run: bash runtests.sh
+      run: bash tests/runtests.sh
       
