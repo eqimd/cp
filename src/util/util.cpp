@@ -76,8 +76,7 @@ public:
         fs::remove(_fullPath);
 
         inCopyProcess = true;
-        // copyMain(fs::absolute(_src).c_str(), fs::absolute(_fullPath).c_str());
-        copyDirectly(fs::absolute(_src).c_str(), fs::absolute(_fullPath).c_str());
+        copyMain(fs::absolute(_src).c_str(), fs::absolute(_fullPath).c_str());
         inCopyProcess = false;
 
         fs::remove(_backupPath);
