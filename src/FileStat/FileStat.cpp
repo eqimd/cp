@@ -9,9 +9,9 @@
 #include "FileStat.h"
 
 
-FileStat::FileStat(const char* fn, int flags) {
+FileStat::FileStat(const char* fn, int flags, mode_t mode) {
     errno = 0;
-    descr = open(fn, flags);
+    descr = open(fn, flags, mode);
     if (descr < 0) {
         throw std::runtime_error(strerror(errno));
     }

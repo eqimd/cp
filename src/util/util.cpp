@@ -54,7 +54,7 @@ public:
                                     << strerror(errno)
                                     << std::endl;
                     } else {
-                        std::cout << "Restored." << std::endl;
+                        std::cout << "Restored." << std::endl;        // copyMain(fs::absolute(_src).c_str(), fs::absolute(_fullPath).c_str());
                         fs::remove(_backupPath);
                     }
                 }
@@ -76,7 +76,8 @@ public:
         fs::remove(_fullPath);
 
         inCopyProcess = true;
-        copyMain(fs::absolute(_src).c_str(), fs::absolute(_fullPath).c_str());
+        // copyMain(fs::absolute(_src).c_str(), fs::absolute(_fullPath).c_str());
+        copyDirectly(fs::absolute(_src).c_str(), fs::absolute(_fullPath).c_str());
         inCopyProcess = false;
 
         fs::remove(_backupPath);
@@ -94,19 +95,20 @@ private:
 
     void copyDirectly(const char* src, const char* dst) {
         FileStat fdSrc(src, O_RDONLY);
-        FileStat fdDst(dst, O_WRONLY | O_CREAT | O_TRUNC);
+        int mode = fdSrc.getMode();
+        FileStat fdDst(dst, O_WRONLY | O_CREAT | O_TRUNC, mode);
         int srcDescr = fdSrc.getDescriptor();
         int dstDescr = fdDst.getDescriptor();
 
         size_t srcSize = fdSrc.getFileSize();
         size_t current_size = 0;
 
-        std::vector<char> fileBuf(RW_CHUNK_SIZE);
+        std::vector<char> fileBuf(READ_CHUNK_SIZE);
 
         std::string progress;
         while(current_size < srcSize) {
             std::cout << std::string(' ', progress.length()) << "\r";
-            size_t want_to_read = std::min(RW_CHUNK_SIZE, srcSize - current_size);
+            size_t want_to_read = std::min(READ_CHUNK_SIZE, srcSize - current_size);
 
             errno = 0;
             ssize_t readed = read(srcDescr, fileBuf.data(), want_to_read);
@@ -126,32 +128,38 @@ private:
                 );
             }
 
-            errno = 0;
-            ssize_t writed = write(dstDescr, fileBuf.data(), readed);
+            size_t wroteSize = 0;
+            while (wroteSize < readed) {
+                size_t want_to_write = std::min(READ_CHUNK_SIZE, WRITE_CHUNK_SIZE);
+                want_to_write = std::min(want_to_write, readed - wroteSize);
+                errno = 0;
+                ssize_t writed = write(dstDescr, fileBuf.data(), want_to_write);
+                if (writed == -1) {
+                    switch (errno) {
+                        case EAGAIN:
+                        case EINTR:
+                            continue;
 
-            if (writed == -1) {
-                switch (errno) {
-                    case EAGAIN:
-                    case EINTR:
-                        continue;
-
-                    default:
-                        throw std::runtime_error("Something wrong with destination file: " + std::string(strerror(errno)));
+                        default:
+                            throw std::runtime_error("Something wrong with destination file: " + std::string(strerror(errno)));
+                    }
+                } else if (writed == 0) {
+                    throw std::runtime_error(
+                        "Destination file trunkated!\nCurrent size: " + std::to_string(current_size) +
+                        "\nExpected size: " + std::to_string(srcSize)
+                    );
                 }
-            } else if (writed == 0) {
-                throw std::runtime_error(
-                    "Destination file trunkated!\nCurrent size: " + std::to_string(current_size) +
-                    "\nExpected size: " + std::to_string(srcSize)
-                );
+
+                wroteSize += writed;
+                if (writed != want_to_write) {
+                    std::cout << "WARNING: Writed " << writed << std::endl;
+                }
             }
 
             current_size += readed;
 
             if (readed != want_to_read) {
                 std::cout << "WARNING: Readed " << readed << std::endl;
-            }
-            if (writed != want_to_read) {
-                std::cout << "WARNING: Writed " << writed << std::endl;
             }
 
             progress = "Current progres: " + std::to_string(current_size) + " / " + std::to_string(srcSize);

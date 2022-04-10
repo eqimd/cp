@@ -4,7 +4,7 @@
 
 class FileStat {
 public:
-    explicit FileStat(const char* fn, int flags);
+    explicit FileStat(const char* fn, int flags, mode_t mode = 0);
 
     ~FileStat();
     int getDescriptor() const;
