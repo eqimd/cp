@@ -37,5 +37,5 @@ jobs:
 
     - name: Run tests
       working-directory: ${{github.workspace}}
-      run: cd ${{github.workspace}}/tests/ && bash get_out_and_compare.sh
+      run: bash runtests.sh
       
