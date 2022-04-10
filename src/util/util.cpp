@@ -12,8 +12,12 @@
 #include "util.h"
 #include <csignal>
 
+namespace {
+    volatile std::sig_atomic_t signalTerminated = 0;
+}
+
 void interruptHandler(int sig) {
-    throw std::runtime_error("Process interrupted by signal " + std::string(strsignal(sig)));
+    signalTerminated = 1;
 }
 
 class CopyContext {
@@ -76,13 +80,25 @@ public:
         }
 
         createNewDirectories();
+        if (signalTerminated == 1) {
+            throw std::runtime_error("Terminated!");
+        }
+
         createBackup(
             _fullPath.parent_path() / ("." + _fullPath.filename().string() + ".bk")
         );
+        if (signalTerminated == 1) {
+            throw std::runtime_error("Terminated!");
+        }
+
         fs::remove(_fullPath);
 
         inCopyProcess = true;
         copyMain(fs::absolute(_src).c_str(), fs::absolute(_fullPath).c_str());
+        if (signalTerminated == 1) {
+            throw std::runtime_error("Terminated!");
+        }
+        
         inCopyProcess = false;
 
         fs::remove(_backupPath);
