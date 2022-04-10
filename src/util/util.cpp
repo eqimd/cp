@@ -213,6 +213,7 @@ private:
                           << "copying full file..."
                           << std::endl;
                 copyDirectly(src, dst);
+                return;
             } else {
                 throw std::runtime_error(strerror(errno));
             }
