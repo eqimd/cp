@@ -32,6 +32,9 @@ public:
 
     ~CopyContext() {
         if (inCopyProcess) {
+            std::cout << "Something went wrong while copying; "
+                      << "restoring from backup..."
+                      << std::endl;
             if (!_nonExPath.empty()) {
                 fs::remove_all(_nonExPath);
             } else {
@@ -51,6 +54,7 @@ public:
                                     << strerror(errno)
                                     << std::endl;
                     } else {
+                        std::cout << "Restored." << std::endl;
                         fs::remove(_backupPath);
                     }
                 }
@@ -59,7 +63,16 @@ public:
     }
 
     void makeCopy() {
-        preparePathsAndBackup();
+        prepareFullPath();
+        if (fs::equivalent(_fullPath, _src)) {
+            std::cout << "Files are equivalent." << std::endl;
+            return;
+        }
+
+        createNewDirectories();
+        createBackup(
+            _fullPath.parent_path() / ("." + _fullPath.filename().string() + ".bk")
+        );
         fs::remove(_fullPath);
 
         inCopyProcess = true;
@@ -181,41 +194,30 @@ private:
     }
 
     void createNewDirectories() {
-        std::vector<std::string> paths;
-        boost::split(paths, _fullPath.string(), boost::is_any_of("/"));
-        paths.pop_back();
+        fs::path curPath;
 
-        auto pathIter = paths.end();
-        fs::path curPath = _fullPath.parent_path();
-
-        while (pathIter != paths.begin() && !fs::exists(curPath)) {
-            --pathIter;
-            curPath /= "..";
-            curPath = curPath.lexically_normal();
-        }
-
-        fs::path existingPath = curPath;
-        fs::path nonExistingPathBegin;
-        if (pathIter != paths.end()) {
-            nonExistingPathBegin = *pathIter;
-        }
-        
-        _nonExPath = existingPath / nonExistingPathBegin;
-
-        for (pathIter; pathIter != paths.end(); ++pathIter) {
-            curPath /= *pathIter;
-            try {
-                fs::create_directory(curPath);
-                std::cout << "Created directory: " << curPath << std::endl;
-            } catch (...) {
-                std::cerr << "Error while creating directory " << curPath << std::endl;
-                throw;
+        for (auto p : _fullPath.parent_path()) {
+            curPath /= p;
+            if (!fs::exists(curPath)) {
+                if (_nonExPath.empty()) {
+                    _nonExPath = curPath;
+                }
+                try {
+                    fs::create_directory(curPath);
+                    std::cout << "Created directory: " << curPath << std::endl;
+                } catch (...) {
+                    std::cerr << "Error while creating directory " << curPath << std::endl;
+                    throw;
+                }
             }
         }
-
     }
 
     void createBackup(const fs::path& backupPath) {
+        if (!fs::exists(_fullPath)) {
+            return;
+        }
+
         _backupPath = backupPath;
         errno = 0;
         int retCode = linkat(
@@ -230,22 +232,14 @@ private:
         }
     }
 
-    void preparePathsAndBackup() {
+    void prepareFullPath() {
         _fullPath = fs::absolute(_dst);
 
-        if (fs::exists(_fullPath)) {
-            if (fs::is_directory(_fullPath)) {
+        if (
+            (fs::exists(_fullPath) && fs::is_directory(_fullPath)) ||
+            _fullPath.filename().empty()
+        ) {
                 _fullPath /= _src.filename();
-            } else {
-                createBackup(
-                    _fullPath.parent_path() / ("." + _fullPath.filename().string() + ".bk")
-                );
-            }
-        } else {
-            if (_fullPath.filename().empty()) {
-                _fullPath /= _src.filename();
-            }
-            createNewDirectories();
         }
     }
 };
