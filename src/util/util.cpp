@@ -64,8 +64,8 @@ public:
 
     void makeCopy() {
         prepareFullPath();
-        if (fs::equivalent(_fullPath, _src)) {
-            std::cout << "Files are equivalent." << std::endl;
+        if (_fullPath.lexically_normal() == fs::absolute(_src).lexically_normal()) {
+            std::cerr << "Can not copy equivalent name in same folder." << std::endl;
             return;
         }
 
