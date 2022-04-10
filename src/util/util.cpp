@@ -10,8 +10,11 @@
 #include <boost/algorithm/string/classification.hpp>
 #include "FileStat.h"
 #include "util.h"
-#include <signal.h>
+#include <csignal>
 
+void interruptHandler(int sig) {
+    throw std::runtime_error("Process interrupted by signal " + std::string(strsignal(sig)));
+}
 
 class CopyContext {
 public:
@@ -63,6 +66,9 @@ public:
     }
 
     void makeCopy() {
+        std::signal(SIGINT, interruptHandler);
+        std::signal(SIGABRT, interruptHandler);
+        
         prepareFullPath();
         if (_fullPath.lexically_normal() == fs::absolute(_src).lexically_normal()) {
             std::cerr << "Can not copy equivalent name in same folder." << std::endl;
