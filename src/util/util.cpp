@@ -6,8 +6,7 @@
 #include <string.h>
 #include <sys/file.h>
 #include <filesystem>
-#include <boost/algorithm/string/split.hpp>
-#include <boost/algorithm/string/classification.hpp>
+#include <vector>
 #include "FileStat.h"
 #include "util.h"
 #include <csignal>
@@ -61,7 +60,7 @@ public:
                                     << strerror(errno)
                                     << std::endl;
                     } else {
-                        std::cout << "Restored." << std::endl;        // copyMain(fs::absolute(_src).c_str(), fs::absolute(_fullPath).c_str());
+                        std::cout << "Restored." << std::endl;
                         fs::remove(_backupPath);
                     }
                 }
@@ -126,9 +125,7 @@ private:
 
         std::vector<char> fileBuf(READ_CHUNK_SIZE);
 
-        std::string progress;
         while(current_size < srcSize) {
-            std::cout << std::string(' ', progress.length()) << "\r";
             size_t want_to_read = std::min(READ_CHUNK_SIZE, srcSize - current_size);
 
             errno = 0;
@@ -183,8 +180,7 @@ private:
                 std::cout << "WARNING: Readed " << readed << std::endl;
             }
 
-            progress = "Current progres: " + std::to_string(current_size) + " / " + std::to_string(srcSize);
-            std::cout << progress;
+            std::cout << "Current progres: " + std::to_string(current_size) + " / " + std::to_string(srcSize) << "\r";
         }
         std::cout << "\nDone copying. " << "Readed: " << current_size << std::endl;
     }
@@ -213,6 +209,7 @@ private:
                           << "copying full file..."
                           << std::endl;
                 copyDirectly(src, dst);
+                return;
             } else {
                 throw std::runtime_error(strerror(errno));
             }
